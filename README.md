@@ -1,178 +1,36 @@
 # Peeps: A demo of JSONAPI-Resources
 
-Peeps is a very basic contact management system implemented as an API that follows the JSON API spec. 
+Peeps is a very basic contact management system implemented as an API that follows the JSON API spec.
 
-Other apps will soon be written to demonstrate writing a consumer for this API.
+## No really, What is this?
 
-The instructions below were used to create this app.
+This project demonstrates how to use JSON API Resources with a NoSQL, ActiveModel replacement **without** ActiveRecord.
 
+In this case, the demo uses Mongoid and MongoDB. In theory, NoBrainer and RethinkDB would also work with a few adjustments.
 
-## Initial Steps to create this app
+## Areas of Opportunity
 
-### Create a new Rails application
-
-```bash
-rails new peeps --skip-javascript
-```
-
-or
-
-```bash
-rails new peeps -d postgresql --skip-javascript
-```
-
-### Create the databases
-
-```bash
-rake db:create
-```
-
-### Add the JSONAPI-Resources gem
-Add the gem to your Gemfile
-
-```bash
-gem 'jsonapi-resources'
-```
-
-Then bundle
-
-```bash
-bundle
-```
-
-### Derive Application Controller from JSONAPI::ResourceController
-Make the following changes to application_controller.rb
+This demo patches JSON API ResourceController to avoid using `ActiveRecord`. (see https://github.com/cerebris/jsonapi-resources/issues/51)
 
 ```ruby
-require 'jsonapi/resource_controller'
+module JSONAPI
+  class ResourceController
 
-class ApplicationController < JSONAPI::ResourceController
-  # Prevent CSRF attacks by raising an exception.
-  # For APIs, you may want to use :null_session instead.
-  protect_from_forgery with: :null_session
+    def create_operations_processor
+      JSONAPI::OperationsProcessor.new
+    end
+
+  end
 end
 ```
 
-### Configure Development Environment
-Edit config/environments/development.rb
+Record filtering relies on ActiveRecord to turn `records.where` into an `IN` query in SQL. This needs an adjustment (not currently included) to enable filtering in Mongoid. (see https://github.com/cerebris/jsonapi-resources/issues/118)
 
-Eager loading of classes is recommended. The code will work without it, but I think it's the right way to go.
-See http://blog.plataformatec.com.br/2012/08/eager-loading-for-greater-good/
-
-```ruby
-  # Eager load code on boot so JSONAPI-Resources resources are loaded and processed globally
-  config.eager_load = true
-```
-
-
-
-```ruby
-config.consider_all_requests_local       = false
-```
-
-This will prevent the server from returning the HTML formatted error messages when an exception happens. Not strictly
-necessary, but it makes for nicer output when debugging using curl or a client library.
-
-## Now let's put some meat into the app
-
-### Create Models for our data
-Use the standard rails generator to create a model for Contacts and one for related PhoneNumbers
-
-```bash
-rails g model Contact name_first:string name_last:string email:string twitter:string
-```
-
-Edit the model
-```ruby
-class Contact < ActiveRecord::Base
-  has_many :phone_numbers
-end
-```
-
-Create the PhoneNumber model
-```bash
-rails g model PhoneNumber contact_id:integer name:string phone_number:string
-```
-
-Edit it
-
-```ruby
-class PhoneNumber < ActiveRecord::Base
-  belongs_to :contact
-end
-```
-
-### Migrate the DB
-
-```bash
-rake db:migrate
-```
-
-### Create Controllers
-Use the rails generator to create empty controllers. These will be inherit methods from the ResourceController so
-they will know how to respond to the standard REST methods.
-
-```bash
-rails g controller Contacts --skip-assets
-rails g controller PhoneNumbers --skip-assets
-```
-
-### Create our resources directory
-
-We need a directory to hold our resources. Let's put in under our app directory
-
-```bash
-mkdir app/resources
-```
-
-### Create the resources
-
-Create a new file for each resource. This must be named in a standard way so it can be found. This should be the single
-underscored name of the model with \_resource.rb appended. For Contacts this will be contact_resource.rb.
-
-Make the two resource files
-
-contact_resource.rb
-
-```ruby
-require 'jsonapi/resource'
-
-class ContactResource < JSONAPI::Resource
-  attributes :name_first, :name_last, :email, :twitter
-  has_many :phone_numbers
-end
-```
-
-and phone_number_resource.rb
-
-```ruby
-require 'jsonapi/resource'
-
-class PhoneNumberResource < JSONAPI::Resource
-  attributes :name, :phone_number
-  has_one :contact
-
-  filter :contact
-end
-
-```
-
-### Setup routes
-Require jsonapi/routing_ext 
-
-```ruby
-require 'jsonapi/routing_ext'
-```
-
-Add the routes for the new resources
-
-```ruby
-jsonapi_resources :contacts
-jsonapi_resources :phone_numbers
-```
-
+Some error handling tries to catch/rescue `ActiveRecord` errors like `ActiveRecord::RecordNotFound`. Sadly, `rescue ActiveRecord::RecordNotFound => e` throws an error because `ActiveRecord` isn't loaded. (see https://github.com/cerebris/jsonapi-resources/issues/127)
 
 ## Test it out
+
+Start a mongo instance with `mongod`.
 
 Launch the app
 
